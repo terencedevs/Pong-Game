@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pong</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #10131c;
+      color: #f4f6ff;
+      font-family: system-ui, sans-serif;
+    }
+
+    main {
+      width: min(900px, 94vw);
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      letter-spacing: 0.18em;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 2px solid #49516b;
+      border-radius: 8px;
+      background: #171c2a;
+      touch-action: none;
+    }
+
+    p {
+      color: #b7bfd6;
+      margin: 12px 0 0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>PONG</h1>
+    <canvas id="game" width="800" height="500" aria-label="Pong game"></canvas>
+    <p>Move: mouse or ↑ / ↓ &nbsp;·&nbsp; Pause: Space</p>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const WIDTH = canvas.width;
+    const HEIGHT = canvas.height;
+    const PADDLE_WIDTH = 12;
+    const PADDLE_HEIGHT = 90;
+    const PADDLE_MARGIN = 28;
+    const BALL_SIZE = 12;
+    const PLAYER_SPEED = 420;
+    const AI_SPEED = 310;
+
+    const player = {
+      x: PADDLE_MARGIN,
+      y: (HEIGHT - PADDLE_HEIGHT) / 2,
+      score: 0
+    };
+
+    const computer = {
+      x: WIDTH - PADDLE_MARGIN - PADDLE_WIDTH,
+      y: (HEIGHT - PADDLE_HEIGHT) / 2,
+      score: 0
+    };
+
+    const ball = { x: WIDTH / 2, y: HEIGHT / 2, vx: 0, vy: 0 };
+    const keys = new Set();
+    let paused = false;
+    let lastTime = 0;
+
+    function resetBall(direction = Math.random() < 0.5 ? -1 : 1) {
+      ball.x = WIDTH / 2;
+      ball.y = HEIGHT / 2;
+      ball.vx = direction * 340;
+      ball.vy = (Math.random() * 2 - 1) * 220;
+    }
+
+    function clampPaddle(paddle) {
+      paddle.y = Math.max(0, Math.min(HEIGHT - PADDLE_HEIGHT, paddle.y));
+    }
+
+    function update(dt) {
+      if (keys.has("ArrowUp")) player.y -= PLAYER_SPEED * dt;
+      if (keys.has("ArrowDown")) player.y += PLAYER_SPEED * dt;
+      clampPaddle(player);
+
+      // The computer tracks the ball, but has a limited speed.
+      const computerCenter = computer.y + PADDLE_HEIGHT / 2;
+      const target = ball.y - PADDLE_HEIGHT / 2;
+      const difference = target - computer.y;
+      computer.y += Math.sign(difference) * Math.min(Math.abs(difference), AI_SPEED * dt);
+      clampPaddle(computer);
+
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+
+      // Top and bottom wall collisions.
+      if (ball.y - BALL_SIZE / 2 <= 0) {
+        ball.y = BALL_SIZE / 2;
+        ball.vy = Math.abs(ball.vy);
+      } else if (ball.y + BALL_SIZE / 2 >= HEIGHT) {
+        ball.y = HEIGHT - BALL_SIZE / 2;
+        ball.vy = -Math.abs(ball.vy);
+      }
+
+      // Paddle collisions. The hit position changes the ball's angle.
+      if (
+        ball.vx < 0 &&
+        ball.x - BALL_SIZE / 2 <= player.x + PADDLE_WIDTH &&
+        ball.x + BALL_SIZE / 2 >= player.x &&
+        ball.y >= player.y &&
+        ball.y <= player.y + PADDLE_HEIGHT
+      ) {
+        bounceOffPaddle(player, 1);
+      }
+
+      if (
+        ball.vx > 0 &&
+        ball.x + BALL_SIZE / 2 >= computer.x &&
+        ball.x - BALL_SIZE / 2 <= computer.x + PADDLE_WIDTH &&
+        ball.y >= computer.y &&
+        ball.y <= computer.y + PADDLE_HEIGHT
+      ) {
+        bounceOffPaddle(computer, -1);
+      }
+
+      // A point is scored when the ball passes a paddle.
+      if (ball.x < 0) {
+        computer.score++;
+        resetBall(1);
+      } else if (ball.x > WIDTH) {
+        player.score++;
+        resetBall(-1);
+      }
+    }
+
+    function bounceOffPaddle(paddle, direction) {
+      const paddleCenter = paddle.y + PADDLE_HEIGHT / 2;
+      const hitPosition = (ball.y - paddleCenter) / (PADDLE_HEIGHT / 2);
+      const speed = Math.min(Math.hypot(ball.vx, ball.vy) * 1.05, 700);
+      const angle = hitPosition * (Math.PI / 3);
+
+      ball.vx = direction * speed * Math.cos(angle);
+      ball.vy = speed * Math.sin(angle);
+      ball.x = direction > 0
+        ? paddle.x + PADDLE_WIDTH + BALL_SIZE / 2
+        : paddle.x - BALL_SIZE / 2;
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+      // Center divider.
+      ctx.strokeStyle = "#49516b";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 12]);
+      ctx.beginPath();
+      ctx.moveTo(WIDTH / 2, 0);
+      ctx.lineTo(WIDTH / 2, HEIGHT);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Scoreboard.
+      ctx.fillStyle = "#f4f6ff";
+      ctx.font = "bold 42px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(player.score, WIDTH / 2 - 70, 58);
+      ctx.fillText(computer.score, WIDTH / 2 + 70, 58);
+
+      // Paddles and ball.
+      ctx.fillStyle = "#f4f6ff";
+      ctx.fillRect(player.x, player.y, PADDLE_WIDTH, PADDLE_HEIGHT);
+      ctx.fillRect(computer.x, computer.y, PADDLE_WIDTH, PADDLE_HEIGHT);
+      ctx.fillRect(
+        ball.x - BALL_SIZE / 2,
+        ball.y - BALL_SIZE / 2,
+        BALL_SIZE,
+        BALL_SIZE
+      );
+
+      if (paused) {
+        ctx.fillStyle = "rgba(16, 19, 28, 0.72)";
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        ctx.fillStyle = "#f4f6ff";
+        ctx.font = "bold 30px system-ui, sans-serif";
+        ctx.fillText("PAUSED", WIDTH / 2, HEIGHT / 2);
+      }
+    }
+
+    function frame(time) {
+      const dt = Math.min((time - lastTime) / 1000 || 0, 0.03);
+      lastTime = time;
+
+      if (!paused) update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        keys.add(event.key);
+      }
+      if (event.code === "Space") {
+        event.preventDefault();
+        paused = !paused;
+      }
+    });
+
+    window.addEventListener("keyup", (event) => keys.delete(event.key));
+    window.addEventListener("blur", () => keys.clear());
+
+    canvas.addEventListener("pointermove", (event) => {
+      const bounds = canvas.getBoundingClientRect();
+      const scaleY = HEIGHT / bounds.height;
+      player.y = (event.clientY - bounds.top) * scaleY - PADDLE_HEIGHT / 2;
+      clampPaddle(player);
+    });
+
+    resetBall();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
